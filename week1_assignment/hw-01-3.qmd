@@ -1,0 +1,42 @@
+---
+title: "Week 1: Data Modeling is Hard"
+author: "Aakriti Poudel"
+date: April 07, 2026
+format:
+  html:
+    theme: cosmo
+---
+
+## My Experience
+
+My capstone project is titled *"Hydropower's Low-Hanging Fruits: Leveraging Least-Impact Dams to Power a Net-Zero Future"*. The goal is to identify future dam sites that can generate hydropower with the least environmental and social harm. I work with five large global datasets:
+
+- **HydroRIVERS** -- a global river network with over 8.4 million river segments, including river connectivity, discharge, and catchment area
+- **GRanD** -- a database of 7,424 existing large dams with details on location, size, and purpose
+- **FHReD** -- a database of over 3,700 planned future hydropower dams, which is the main dataset we assess for suitability
+- **WorldPop** -- gridded population estimates at 1 km resolution, used to flag sites where dam construction could displace people
+- **WDPA** -- the global database of protected areas, used to flag sites where a dam would conflict with conservation
+
+They come from different organizations, and use different formats and spatial resolutions. Deciding how to organize and connect them was the core data modeling challenge.
+
+## Were you successful? Did you model the data in such a way that you could get your work done, and possibly also make it easy to extend in the future?
+
+Partly. The approach that worked well was breaking the data into smaller, focused tables linked by a shared river basin ID from HydroRIVERS. Instead of one giant merged file, we built separate tables for:
+
+- Existing dams matched to their river basin
+- Future dam candidates matched to their river basin
+- Future dams that overlap with protected areas (from WDPA)
+- Future dams near large populations (from WorldPop)
+- Rivers with multiple dams planned in a cascade
+
+This structure made it easy to answer specific questions without loading everything at once. It also means a future researcher can pick up just the piece they need -- for example, only the protected area overlap table -- without having to understand the full dataset. So in terms of making the data usable and easy to extend, this worked.
+
+We also made deliberate trade-offs to keep things manageable. For fidelity, we limited HydroRIVERS to rivers at order 3 and above, cutting millions of small streams that would never host a dam. For data availability, we left out cost estimates for future dams because that field was empty for most records in FHReD -- a column that is mostly empty is more confusing than helpful.
+
+## Or, despite your best efforts, did you run into problems down the road and find that you wished you had done things differently? In that case, did you walk away with any learning experiences?
+
+HydroRIVERS, GRanD and FHReD each define river boundaries slightly differently, matching a dam point to the correct river segment required careful spatial joins. On the first pass, some dams ended up assigned to the wrong basin because a dam point sat just across a basin boundary line. Catching and fixing those errors took much longer than expected.
+
+I wished we had defined the spatial matching rules and tested them before building any of the linked tables. We did it the other way around, built the tables first, then found the mismatches and fixing things late in the process is much harder than getting the links right from the start.
+
+The bigger lesson is you cannot have full detail, full simplicity and full data coverage all at once. The decisions that helped most were being clear about what questions we actually needed to answer (functional requirements) and keeping the structure simple enough that someone else could understand it without explanation (understandability). The decisions that cost us time were not thinking carefully enough about how the datasets would connect spatially before we started building.

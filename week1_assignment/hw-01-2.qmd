@@ -1,0 +1,252 @@
+---
+title: "Week 1: Data Modeling"
+author: "Aakriti Poudel"
+date: April 07, 2026
+format:
+  html:
+    toc: true
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## Setup
+
+```{r}
+# Load all required libraries
+library(tidyverse)
+library(DBI)
+library(duckdb)
+
+# Read data
+snow <- read_csv(
+  "https://ucsb-library-research-data-services.github.io/bren-eds213/modules/week01/ASDN_Snow_survey.csv"
+)
+
+```
+
+## Exploring the Data
+
+First I look at the data so I can make informed decisions about data types, which columns can be NULL, and what constraints make sense.
+
+### Column types and sample values
+
+`glimpse()` shows the column names, how R read each column, and a few sample values. This will help me decide the right SQL data type for each column.
+
+```{r}
+glimpse(snow)
+```
+
+Let's print a few unique values from each column to see what the data actually looks like.
+
+```{r}
+peek <- function(x, label, n = 5) {
+  cat(label, ":", paste(head(unique(x), n), collapse = ", "), "\n")
+}
+
+peek(snow$Site, "Site")
+peek(snow$Year, "Year")
+peek(snow$Date, "Date")
+peek(snow$Plot, "Plot")
+peek(snow$Location, "Location")
+peek(snow$Snow_cover, "Snow_cover")
+peek(snow$Water_cover, "Water_cover")
+peek(snow$Land_cover, "Land_cover")
+peek(snow$Total_cover, "Total_cover")
+peek(snow$Observer, "Observer")
+peek(snow$Notes, "Notes")
+
+```
+
+From these, I can see that `Site` is a short text code, cover columns have decimal values, and `Date` is a real date, not just a number.
+
+### Missing values (NULL check)
+
+Here, check the count of missing values in each column.
+
+```{r}
+colSums(is.na(snow))
+```
+
+Only `Location`, `Observer`, and `Notes` have missing values. Everything else has zero, so those columns should be `NOT NULL`.
+
+### Primary key
+
+A primary key must uniquely identify every row. I test whether the combination of `Site`, `Date`, `Plot`, and `Location` works. If this returns no rows, it means no duplicates exist and this combination is a valid primary key.
+
+```{r}
+snow |>
+  count(Site, Date, Plot, Location) |>
+  filter(n > 1)
+```
+
+No duplicates. Now, check what happens if I drop `Location` from the key, if duplicates appear, then `Location` is necessary.
+
+```{r}
+snow |>
+  count(Site, Date, Plot) |>
+  filter(n > 1) |>
+  head()
+```
+
+Duplicates appear without `Location`, so it must stay in the key.
+
+### Cover value ranges
+
+**The instructions ask about value constraints.** Cover columns represent percentages, so check whether any value falls outside the 0 to 100 range. If this returns no rows, the constraint is safe to add.
+
+```{r}
+snow |>
+  filter(Snow_cover < 0  | Snow_cover > 100 |
+         Water_cover < 0 | Water_cover > 100 |
+         Land_cover < 0  | Land_cover > 100)
+```
+
+No values outside the range, so `BETWEEN 0 AND 100` is a valid constraint for all three cover columns.
+
+### Cover columns sum check
+
+The metadata says `Total_cover` is a checksum, it should always equal the sum of the three cover parts. Verify if this is true in the data.
+
+```{r}
+snow |>
+  mutate(total_check = Snow_cover + Water_cover + Land_cover) |>
+  filter(abs(total_check - Total_cover) > 0.01)
+```
+
+```{r}
+unique(snow$Total_cover)
+```
+
+The three parts always add up to `Total_cover`, and `Total_cover` is always 100 in every row. Both constraints are safe to enforce.
+
+### Year and date consistency
+
+`Year` and `Date` both describe when the survey happened. They should always agree. Check for any rows where `Year` does not match the year part of `Date`.
+
+```{r}
+snow |>
+  mutate(Date = as.Date(Date)) |>
+  filter(Year != year(Date))
+```
+
+No mismatches. We can safely add a constraint that requires `Year = year(Date)`.
+
+## SQL Table Definition
+
+Based on everything above, here is the `Snow_survey` table definition using DuckDB syntax. Each constraint reflects a specific finding from the exploration.
+
+```{r}
+con <- dbConnect(duckdb())
+
+dbExecute(con, "
+CREATE TABLE Snow_survey (
+
+    Site        TEXT    NOT NULL,
+    Year        INTEGER NOT NULL,
+    Date        DATE    NOT NULL,
+    Plot        TEXT    NOT NULL,
+    Location    TEXT,
+    Snow_cover  REAL    NOT NULL,
+    Water_cover REAL    NOT NULL,
+    Land_cover  REAL    NOT NULL,
+    Total_cover REAL    NOT NULL,
+    Observer    TEXT,
+    Notes       TEXT,
+
+    PRIMARY KEY (Site, Date, Plot, Location),
+
+    -- skipping FK for now, Site and Observer reference other tables,
+    -- FOREIGN KEY (Site)     REFERENCES Site(Code),
+    -- FOREIGN KEY (Observer) REFERENCES Personnel(Abbreviation),
+
+    CONSTRAINT year_range
+        CHECK (Year BETWEEN 1900 AND 2100),
+
+    CONSTRAINT year_matches_date
+        CHECK (Year = year(Date)),
+
+    CONSTRAINT snow_cover_range
+        CHECK (Snow_cover  BETWEEN 0 AND 100),
+
+    CONSTRAINT water_cover_range
+        CHECK (Water_cover BETWEEN 0 AND 100),
+
+    CONSTRAINT land_cover_range
+        CHECK (Land_cover  BETWEEN 0 AND 100),
+
+    CONSTRAINT total_cover_equals_100
+        CHECK (Total_cover = 100),
+
+    CONSTRAINT cover_parts_sum_to_total
+        CHECK (ABS((Snow_cover + Water_cover + Land_cover) - Total_cover) < 0.01)
+);
+")
+```
+
+`DESCRIBE` shows the final schema: column names, types and whether NULL is allowed.
+
+```{r}
+dbGetQuery(con, "DESCRIBE Snow_survey")
+```
+
+Load the actual data into the table to confirm everything works.
+
+```{r}
+snow_clean <- snow |>
+  select(Site, Year, Date, Plot, Location,
+         Snow_cover, Water_cover, Land_cover, Total_cover,
+         Observer, Notes)
+
+dbWriteTable(con, "Snow_survey", snow_clean, overwrite = TRUE)
+
+dbGetQuery(con, "SELECT COUNT(*) AS total_rows FROM Snow_survey")
+```
+
+```{r}
+dbGetQuery(con, "SELECT * FROM Snow_survey LIMIT 10")
+```
+
+```{r}
+#| include: false
+dbDisconnect(con)
+```
+
+## Explanation
+
+### Data types
+
+- `Site`, `Plot`, `Location`, `Observer`, and `Notes` are `TEXT` because they are names or short codes, not numbers you would do math with.
+- `Year` is `INTEGER` because it is a whole number and you might want to filter or sort by it.
+- `Date` is `DATE` so the database treats it as a real date. This lets us use date functions like `year()`. Storing it as `TEXT` would make that impossible.
+- The four cover columns are `REAL` because the values have decimals (e.g., 95.0, 7.5).
+
+### Primary key
+
+No single column on its own identifies a row uniquely. A survey row is defined by where it happened (site + plot + location) and when (date). The R checks above confirmed that `(Site, Date, Plot, Location)` has zero duplicates, and that removing `Location` creates duplicates. So the primary key is composite and `Location` must be part of it.
+
+### Foreign keys
+
+`Site` looks like it references the `Code` column in the `Site` table, and `Observer` looks like it references `Abbreviation` in the `Personnel` table. These relationships exist in the full ASDN dataset. I left them as comments in the SQL because we are only creating the `Snow_survey` table here.
+
+### NULL values
+
+I checked with `colSums(is.na(snow))`. Only `Location`, `Observer`, and `Notes` have missing values in the data, so only those three are allowed to be NULL. All other columns are `NOT NULL`.
+
+### Uniqueness
+
+No single column has unique values across all rows, so there are no single-column `UNIQUE` constraints. The composite primary key is the only uniqueness rule needed.
+
+### Other constraints
+
+- Each cover column is constrained to `BETWEEN 0 AND 100` because they are percentages.
+- `Total_cover` is constrained to equal 100. The metadata says this is a checksum column and every row in the data confirms this.
+- Snow, water, and land cover must add up to `Total_cover`. I use a small tolerance of 0.01 to avoid false failures from floating point rounding.
+- `Year` must equal `year(Date)` because both columns describe the same date and should never contradict each other.
+- Each constraint has a name so that if a row is rejected, the error message says exactly which rule was broken.
+
+## Questions and uncertainties
+
+- Could the same plot be surveyed twice on the same day by two different observers? If yes, the primary key I chose would not work and `Observer` would need to be added to it.
+- All cover values in the data are multiples of 5 (0, 5, 10, ...), which suggests the field protocol uses 5% intervals. I chose not to enforce this because a future observer might record a finer value and we should not reject that.
