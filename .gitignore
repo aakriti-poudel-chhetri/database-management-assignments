@@ -3,3 +3,9 @@
 .RData
 .Ruserdata
 .positai
+
+# Add data
+data/
+
+# Add .DS_Store
+.DS_Store
