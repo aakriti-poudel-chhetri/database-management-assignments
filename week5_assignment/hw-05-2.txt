@@ -1,0 +1,151 @@
+EDS 213 Week 5, Homework 2: Bash Essentials
+
+Q1. Compare the output of these three commands:
+    ls
+    ls .
+    ls "$(pwd)/../for_bash_essentials"
+Explain why you see what you see, and explain what processing Bash is doing in the third command.
+
+Answer: All three commands show the exact same list of files. The output is identical.
+
+- "ls" with nothing after it just lists the files in whatever folder you are currently in.
+- "ls ." does the same thing. The dot is just a shorthand for "current folder."
+- The third command looks complicated, but it ends up in the same place.
+    Bash does the following step by step:
+        1. It runs "pwd" first, which gives the full path of the current folder.
+        for example: /home/aakriti/bren-eds213-data/for_bash_essentials
+        2. It plugs that path into the command, making it:
+       /home/aakriti/bren-eds213-data/for_bash_essentials/../for_bash_essentials
+        3. The "/.." means "go up one folder," and then it goes back into
+       for_bash_essentials, so it ends up right back where we started.
+        4. The whole thing is in double quotes so Bash treats it as one single path.
+
+---------------------------------------------------------------------------------------------
+
+Q2. Try the following two commands:
+    wc -l *.csv
+    cat *.csv | wc -l
+The first prints filenames and line counts. The second prints a bare number.
+Why does it print that number, and why does it not print any filenames?
+
+Answer: 
+- When we run "wc -l *.csv", Bash hands the actual file names directly to wc.
+So wc knows which files it is reading and prints each filename along with its
+line count, plus a total at the end.
+
+- When we run "cat *.csv | wc -l", cat reads all the files and sends the
+combined text through the pipe to wc. But wc only receives the text. It has
+no idea which files the text came from. It just counts all the lines and prints
+one single number. No filenames, because it never saw any.
+
+---------------------------------------------------------------------------------------------
+
+Q3. You want to count the total number of lines in all CSV files and try this command:
+    cat *.csv | wc -l a.csv
+    What happens and why?
+
+Answer:
+When we run "cat *.csv | wc -l a.csv", wc ignores the pipe and only reads the file a.csv that was given
+to it directly. It counts the lines in a.csv, prints the count and the filename, and throws away everything
+cat was sending through the pipe.
+
+This happens because when you give a program a file name directly, it reads from that file and ignores the pipe
+entirely. The pipe only matters when a program has no file to read from.
+
+---------------------------------------------------------------------------------------------
+
+Q4. You’re given
+    name=Moe
+    and you’d like to print “Moe_Howard”. You try this:
+    echo "$name_Howard"
+but that doesn’t quite work. What fix can you apply to $name, while keeping it inside the quotation marks,
+to make this command give the desired effect? (Refer back to section 3.)
+
+Answer:
+When you type echo "$name_Howard", Bash thinks the whole thing "name_Howard" is one variable name.
+It looks for a variable called "name_Howard", finds nothing, and prints an empty line. The fix is to
+put curly braces around just the variable name:
+echo "${name}_Howard"
+The curly braces tell Bash exactly where the variable name stops. So Bash reads "name", gets "Moe",
+and then adds "_Howard" at the end, printing:
+Moe_Howard
+
+---------------------------------------------------------------------------------------------
+
+Q5. You create a script and run it like so:
+bash myscript.sh *.csv
+What are the values of variables $1 and $#? Explain why the script does not see just one argument 
+passed to it.
+
+Answer:
+Before the script even starts running, Bash looks at "*.csv" and replaces it with the actual list of
+matching file names in the folder. So the script never sees the text "*.csv" — it receives each file
+as a separate item.
+
+For example, if there are three CSV files in the folder:
+
+$1 = the first CSV file in the folder (for example, ASDN_Bird_eggs.csv)
+$# = the total number of CSV files in the folder (for example, 3)
+
+This is why the script does not see just one argument. The wildcard gets expanded into multiple file names
+before the script is called.
+
+---------------------------------------------------------------------------------------------
+
+Q6. You create a script and run it like so:
+bash myscript.sh "$(date)" $(date)
+In your script, what are the values of variables $1 and $3?
+
+Answer:
+The date command produces something like: Thu Apr 30 10:22:05 PDT 2026.
+The first part, "$(date)" is wrapped in double quotes, so the entire date output is kept together as
+one single argument. That means:
+    $1 = "Thu Apr 30 10:22:05 PDT 2026"
+The second part, $(date) has no quotes, so Bash splits the output into separate words at every space.
+That means:
+    $2 = "Thu"
+    $3 = "Apr"
+    $4 = "30"
+    and so on.
+So $3 is just the month, for example "Apr." The important point is that double quotes keep everything together as
+one argument, while no quotes causes the output to be broken up into many separate pieces.
+
+---------------------------------------------------------------------------------------------
+
+Q7. Create a file you don’t care about (because you’re about to destroy it):
+    echo "yo ho a line of text" > junk_file.txt
+    echo "another line" >> junk_file.txt
+You want to sort the lines in this file, so you try:
+    sort junk_file.txt
+Well that prints the lines in sorted order, but it doesn’t actually change the file.
+You recall section 7 and try:
+    sort junk_file.txt > junk_file.txt
+What happens and why? How can you sort the lines in your file? (Hint: it involves creating a second file and using mv.)
+
+Answer: 
+Running "sort junk_file.txt > junk_file.txt" destroys the file and leaves it empty.
+
+This happens because Bash opens and empties junk_file.txt the moment it sees the ">" symbol,
+before sort even gets a chance to read the file. So by the time sort tries to read it, the file is already blank.
+Sort reads nothing, writes nothing, and the file ends up empty.
+The fix is to sort into a brand new file first, then replace the original with it:
+    sort junk_file.txt > junk_file_sorted.txt
+    mv junk_file_sorted.txt junk_file.txt
+This way, sort reads the original file while it still has content, saves the sorted version into a new file, and
+then mv renames that new file to replace the original.
+
+---------------------------------------------------------------------------------------------
+
+Q8. You want to delete all files ending in .csv, so you type (don’t actually try this):
+    rm * .csv
+but as can be seen, your thumb accidentally hit the space bar and you got an extra space in there.
+What will rm do in this case?
+
+Answer:
+The accidental space turns "rm *.csv" into two separate things: a star on its own and ".csv" on its own.
+The star gets expanded into every single file in the current folder, so rm deletes all of them. Then rm tries
+to delete a file literally named ".csv", which probably does not exist, so it prints an error for that one.
+The intended command was meant to delete only CSV files, but the extra space causes it to delete everything in the folder.
+This is why it is a good idea to set up rm so that it asks for confirmation before deleting each file, especially when using wildcards.
+
+---------------------------------------------------------------------------------------------

@@ -1,0 +1,24 @@
+Answer the following questions.
+
+1. Do the tables created automatically by DuckDB guarantee that a nest ID mentioned in the Eggs_big table actually exists
+in the Nests_big table? If yes, explain how that is guaranteed, if not, explain why not.
+
+Answer: When DuckDB reads a CSV file and creates a table, it only copies the data as is. It doesn't set up any rules to make
+sure the data in one table actually matches the data in another table. So if an egg record mentions a nest ID that doesn't exist
+in the nests table, DuckDB won't notice or complain. It just stores whatever was in the CSV file.
+
+2. What queries did you use (or could you use) to find the minimum and maximum longitude values in the Site table?
+
+Answer: I used the following query to find the minimum and maximum longitude values in the Site table.
+SELECT MIN(Longitude), MAX(Longitude) FROM Site;
+
+3. The interpretation of the Pearson correlation coefficient is: +1 is a perfect positive correlation, -1 is a perfect negative correlation,
+and 0 is no correlation at all. How would you characterize the correlation between egg volume and longitude for the eggs of Calidris alpina
+in the Arctic above Canada?
+
+Answer: 
+The correlation coefficient was −0.108, which is very close to 0, indicating a weak negative correlation.
+This means that egg volume slightly tends to decrease as we move eastward across northern Canada,
+but the relationship is so weak that longitude alone explains very little of the variation in egg size. 
+This is quite different from the strong trend that Liu et al. found in Eurasia, suggesting that the longitudinal pattern
+in egg characteristics may not hold in the Canadian Arctic.
